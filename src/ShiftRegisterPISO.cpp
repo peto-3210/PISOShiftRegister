@@ -74,6 +74,59 @@ bool PISORegister::GenerateNestedPulse(int innerPin, bool innerPolarity, int out
     return false;
 }
 
+bool PISORegister::GenerateLoadPulse(){
+    //During loading pulse
+    if (pulseCount == 0) {
+        if (ldClkPulseDelay != 0){
+            pulseCount = GenerateNestedPulse(clkPin, clkPol, ldPin, ldPol);
+        }
+        else {
+            pulseCount = GeneratePulse(ldPin, ldPol);
+        }
+        return false;
+    }
+
+    //After loading pulse
+    pulseCount = 0;
+    return true;
+}
+
+bool PISORegister::ShiftAndRead(){
+    if (GeneratePulse(clkPin, clkPol) == true){
+        edgeCount = 0;
+        //During reading
+        if (pulseCount < pinNum){
+            rawInputData |= (digitalRead(qhPin) << pulseCount);
+            pulseCount++;
+            return false;
+        }
+
+        //Reading finished
+        return true;
+    }
+    return false;
+}
+
+
+bool PISORegister::VerifyAndStore(){
+
+    //To remove possible glitches
+    if (lastInputData != rawInputData){
+        constantInputLoopsCounter = 1;
+        lastInputData = rawInputData;
+        return false;
+    }
+    else if (constantInputLoopsCounter < validInputLoopNumber){
+        constantInputLoopsCounter++;
+        return false;
+    }
+
+    validInputData = lastInputData;
+    constantInputLoopsCounter = 0;
+    pulseCount = 0;
+    return true;
+}
+
 void PISORegister::ReadData(){
     unsigned long currentReadingTimestamp = micros();
     //Timer overflow
@@ -84,57 +137,21 @@ void PISORegister::ReadData(){
 
         //Loading phase, lasts for 1 pulse
         if (phase == false){
-
-            //During loading pulse
-            if (pulseCount == 0) {
-                if (ldClkPulseDelay != 0){
-                    pulseCount = GenerateNestedPulse(clkPin, clkPol, ldPin, ldPol);
-                }
-                else {
-                    pulseCount = GeneratePulse(ldPin, ldPol);
-                }
-            }
-
-            //After loading pulse
-            else {
-                pulseCount = 0;
-                phase = true;
-
+            if (GenerateLoadPulse() == true){
                 //First input bit loads with LD pulse
-                rawData |= (digitalRead(qhPin) << pulseCount++);
+                rawInputData |= (digitalRead(qhPin) << pulseCount++);
+                phase = true;
             }
         }
 
         //Reading phase, lasts for pinNum pulses
         else {
-            if (GeneratePulse(clkPin, clkPol) == true){
-                edgeCount = 0;
-                //During reading
-                if (pulseCount < pinNum){
-                    rawData |= (digitalRead(qhPin) << pulseCount);
-                    pulseCount++;
-                }
-                
-                //Reading finished
-                else {
-                    //To remove possible glitches
-                    if (tempData != rawData){
-                        constantInputLoopsCounter = 1;
-                        tempData = rawData;
-                    }
-                    else if (constantInputLoopsCounter < validInputLoopNumber){
-                        constantInputLoopsCounter++;
-                    }
-                    else {
-                        inputData = tempData;
-                        constantInputLoopsCounter = 0;
-                    }
+            if (ShiftAndRead() == true){
+                VerifyAndStore();
 
-                    rawData = 0;
-                    pulseCount = 0;
-                    phase = false;
-                    lastReadingTimestamp = currentReadingTimestamp;
-                }
+                rawInputData = 0;
+                phase = false;
+                lastReadingTimestamp = currentReadingTimestamp;
             }
         }
     }

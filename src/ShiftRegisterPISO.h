@@ -5,19 +5,18 @@
 
 class PISORegister {
     private:
+
+    //Configuration variables
     int clkPin = 0;
     int ldPin = 0;
     int qhPin = 0;
     int pinNum = 0;
+
     bool inputLogic = false;
-
-    bool testVal = 0;
-
-
     bool clkPol = true;
     bool ldPol = false;
-    unsigned long ldClkPulseDelay = 0;
 
+    unsigned long ldClkPulseDelay = 0;
     unsigned long pulseWidth = 100;
     unsigned long readingDelay = 0;
     int validInputLoopNumber = 2;
@@ -25,10 +24,18 @@ class PISORegister {
     //Internal variables for pulse functions
     int edgeCount = 0;
     int pulseCount = 0;
-
-    bool phase = false; //false for LD pulse, true for clk pulses
     unsigned long lastEdgeTimestamp = 0;
+
+    //Internal variables for reading function
+    bool phase = false; //false for LD pulse, true for clk pulses
     unsigned long lastReadingTimestamp = 0;
+    uint16_t constantInputLoopsCounter;
+
+    //Data variables
+    uint64_t validInputData;
+    uint64_t lastInputData;
+    uint64_t rawInputData;
+
 
     /**
      * @brief Generates single pulse, f.e. rising and falling edge (or vice versa) 
@@ -50,13 +57,6 @@ class PISORegister {
      */
     bool GenerateNestedPulse(int innerPin, bool innerPolarity, int outerPin, bool outerPolarity);
 
-    uint64_t inputData;
-    
-    uint64_t tempData;
-    uint64_t rawData;
-
-    uint16_t constantInputLoopsCounter;
-
     public:
     PISORegister(){}
 
@@ -64,13 +64,13 @@ class PISORegister {
      * @brief Prepares for reading
      * @param pinNum Number of register inputs (max 64)
      * @param clkPin Pin used for clock signal
-     * @param clkPol Polarity of clock edge - true for rising edge, false for falling edge
      * @param ldPin Pin used for asynchronous load signal
+     * @param qhPin Input from shift register
+     * @param clkPol Polarity of clock edge - true for rising edge, false for falling edge
      * @param ldPol Logic level of asynchronous loading - false for 0, true for 1
-     * @param qhPin Output of shift register
      * @param inputLogic Type of input logic (true for normal, false for inverse)
      */
-    void Init(int pinNum, int clkPin, bool cklPol, int ldPin, bool ldPol, int qhPin, bool inputLogic){
+    void Init(int pinNum, int clkPin, int ldPin, int qhPin, bool cklPol, bool ldPol, bool inputLogic){
         this->clkPin = clkPin;
         this->clkPol = clkPol;
         this->ldPin = ldPin;
@@ -128,9 +128,27 @@ class PISORegister {
     }
 
     /**
-     * @return Raw input data
+     * @return Data from all inputs
      */
-    uint64_t GetRawData(){ return inputData; }
+    uint64_t GetAllInputData(){ return validInputData; }
+
+    /**
+     * @brief Generates loading pulse.
+     * @return False when pulsing, true when done
+     */
+    bool GenerateLoadPulse();
+
+    /**
+     * @brief Shifts data and reads input.
+     * @return True when all data was read, false otherwise
+     */
+    bool ShiftAndRead();
+
+    /**
+     * @brief Verifies and stores input data if valid.
+     * @return True if data was stored, false otherwise
+     */
+    bool VerifyAndStore();
 
     /**
      * @brief Reads data from shift register. 
@@ -142,8 +160,8 @@ class PISORegister {
      * @brief Reads data from desired input
      * @returns Input data
      */
-    bool GetInputData(uint8_t num){
-        return ((bool)(inputData & (1 << num))) == inputLogic;
+    bool GetInput(uint8_t num){
+        return ((bool)(validInputData & (1 << num))) == inputLogic;
     }
 
 };
